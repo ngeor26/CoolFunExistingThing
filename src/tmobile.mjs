@@ -4,22 +4,28 @@ const COLORS = 'main .color-swatch-card input[name="color"]';
 const MEMORY = 'main #pay-monthly-tabpanel input[type="radio"][data-upf-product-sku]';
 const MODAL = '#bopis-store-locator';
 
-async function openProduct(page, url) {
-  console.log('Product stage: navigation');
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+async function dismissOverlays(page) {
   for (const selector of ['#tnt269975_BtMdL_INS_Cta', '#onetrust-reject-all-handler']) {
     const button = page.locator(selector);
     if (await button.isVisible()) await button.click();
   }
+}
+
+async function openProduct(page, url) {
+  console.log('Product stage: navigation');
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await dismissOverlays(page);
   console.log('Product stage: color options');
   await page.locator(COLORS).first().waitFor({ state: 'attached', timeout: 45000 });
   console.log('Product stage: storage options');
   await page.locator(MEMORY).first().waitFor({ state: 'attached', timeout: 30000 });
+  await dismissOverlays(page);
   if (!await page.getByRole('heading', {name:'iPhone Duo',exact:true}).isVisible())
     throw new Error('Expected iPhone Duo product page was not displayed.');
 }
 
 async function selectRadio(page, locator) {
+  await dismissOverlays(page);
   if (await locator.isDisabled()) throw new Error('Variant cannot currently be selected; local stock is unknown.');
   const id = await locator.getAttribute('id');
   await page.locator(`label[for="${id}"]`).click();
@@ -55,6 +61,10 @@ export async function discoverVariants(browser, config) {
     if (!variants.length || variants.length > config.maxVariants) throw new Error('No matching variants, or unexpected variant count. Review config.json.');
     if (new Set(variants.map(v => v.sku)).size !== variants.length) throw new Error('Variant SKU mapping is ambiguous.');
     return variants;
+  } catch (error) {
+    const message = String(error.message);
+    console.log('Product failure category:', /intercepts pointer events/.test(message) ? 'overlay' : /strict mode violation/.test(message) ? 'ambiguous selector' : /Timeout|timeout/.test(message) ? 'timeout' : 'unrecognized product state');
+    throw error;
   } finally { await context.close(); }
 }
 
