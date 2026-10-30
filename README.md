@@ -10,10 +10,12 @@ Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThi
 
 - Product: https://www.t-mobile.com/cell-phone/apple-iphone-duo
 - Local pickup within T-Mobile's 20-mile search radius around two ZIP codes stored in the `ZIP_CODES` secret.
-- All discovered color/storage combinations by default. Set exact color names or storage labels in `config.json` to narrow the search. Empty arrays mean all options.
+- Currently configured for Star White and Night Sky in 256GB and 512GB: four variants, checked at both locations (eight searches). Set exact color names or storage labels in `config.json` to change this. Empty arrays mean all options.
 - A fresh browser context per variant and ZIP, with the selected variant verified before searching.
 - Only a visible store result marked **In Stock** or **Hurry, only a few left** triggers an availability notification.
 - The search must show a fresh loading/completion cycle after submitting the ZIP. If this cannot be verified, the result is unknown.
+- The pickup form must remain stable for two seconds before entry and after search completion. If the page clears the ZIP, the checker re-enters it and submits a fresh search, up to three submissions per browser attempt. Results are accepted only while the ZIP still matches.
+- Overlapping cookie and promotional banners are dismissed before variant selection. Diagnostic logs record fixed failure stages/categories and boolean page state, never raw page text or location values.
 - One combined stock alert per daily run; stock remaining available on another day produces another daily alert. There is no persistent deduplication database.
 - A separate attention alert for incomplete checks. Errors also fail the Actions run. Setup failures/timeouts before the checker executes rely on GitHub's workflow-failure notifications.
 - One retry for a timed-out or otherwise unknown check, provided at least 90 seconds remain in the checker's time budget.
