@@ -1,6 +1,6 @@
 import { classify } from './stock.mjs';
 
-const COLORS = 'main input[name="color"]';
+const COLORS = 'main .color-swatch-card input[name="color"]';
 const MEMORY = 'main #pay-monthly-tabpanel input[type="radio"][data-upf-product-sku]';
 const MODAL = '#bopis-store-locator';
 
@@ -24,7 +24,10 @@ async function selectRadio(page, locator) {
   const id = await locator.getAttribute('id');
   await page.locator(`label[for="${id}"]`).click();
   await locator.waitFor({state:'attached'});
-  await page.waitForFunction(id => document.getElementById(id)?.checked === true, id);
+  await page.waitForFunction(id => {
+    const input = document.getElementById(id);
+    return input?.checked === true || input?.closest('label')?.classList.contains('selected');
+  }, id);
 }
 
 export async function discoverVariants(browser, config) {
@@ -41,11 +44,11 @@ export async function discoverVariants(browser, config) {
       await selectRadio(page, page.locator(COLORS).and(page.locator(`[value="${color}"]`)));
       // Wait for the visible selection and storage options to settle before reading SKU attributes.
       await page.waitForTimeout(1200);
-      const memory = await page.locator(MEMORY).evaluateAll(els => els.map(e => ({storage:e.value,sku:e.getAttribute('data-upf-product-sku'),disabled:e.disabled})));
+      const memory = await page.locator(MEMORY).evaluateAll(els => els.map(e => ({storage:e.value,disabled:e.disabled})));
       for (const item of memory) {
         if (config.storage.length && !config.storage.includes(item.storage)) continue;
-        if (!item.sku || !/^[a-zA-Z0-9_-]+$/.test(item.sku)) throw new Error('T-Mobile returned an unrecognized SKU.');
-        variants.push({...item, color, name:`${color} ${item.storage}`});
+        if (!/^[0-9]+(?:GB|TB)$/.test(item.storage)) throw new Error('T-Mobile returned an unrecognized storage option.');
+        variants.push({...item, color, name:`${color} ${item.storage}`, sku:`${color}:${item.storage}`});
       }
     }
     console.log(`Product stage: discovered ${variants.length} variants`);
@@ -60,14 +63,16 @@ export async function checkPickup(browser, config, variant, zip) {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   try {
-    const url = new URL(config.productUrl);
-    url.searchParams.set('sku', variant.sku);
-    await openProduct(page, url.href);
+    await openProduct(page, config.productUrl);
+    await selectRadio(page, page.locator(COLORS).and(page.locator(`[value="${variant.color}"]`)));
+    await page.waitForTimeout(1200);
+    await selectRadio(page, page.locator(MEMORY).and(page.locator(`[value="${variant.storage}"]`)));
     await page.waitForFunction(({colors,memory,variant}) => {
-      const c = [...document.querySelectorAll(colors)].find(e=>e.checked);
+      const c = [...document.querySelectorAll(colors)].find(e=>e.closest('label')?.classList.contains('selected'));
       const m = [...document.querySelectorAll(memory)].find(e=>e.checked);
-      return c?.value === variant.color && m?.value === variant.storage && m?.getAttribute('data-upf-product-sku') === variant.sku;
+      return c?.value === variant.color && m?.value === variant.storage;
     }, {colors:COLORS,memory:MEMORY,variant}, {timeout:20000});
+    console.log('Pickup stage: open store search');
     const trigger = page.locator('[data-publish-event-topic="INITIATE_BOPIS_STORE_LOCATOR_MODAL"]:visible').first();
     if (!await trigger.isVisible()) {
       const pickup = page.locator('label[data-radiofieldid="BOPIS"]:visible');
@@ -93,6 +98,7 @@ export async function checkPickup(browser, config, variant, zip) {
       window.__stockObserver.observe(root,{childList:true,subtree:true,attributes:true,characterData:true});
     }, MODAL);
     await input.press('Enter');
+    console.log('Pickup stage: await fresh search results');
     await page.waitForFunction(() => window.__stockSearch?.finished, null, {timeout:30000});
     if (await input.inputValue() !== zip) throw new Error('ZIP search was not retained.');
     const snapshot = await modal.evaluate(root => {
@@ -104,6 +110,7 @@ export async function checkPickup(browser, config, variant, zip) {
       })).filter(r=>r.name && r.address);
       return {rows,text:root.innerText,complete:true};
     });
+    console.log('Pickup stage: classify fresh results');
     return {zip,variant:variant.name,sku:variant.sku,...classify(snapshot)};
   } catch (error) {
     return {zip,variant:variant.name,sku:variant.sku,status:'unknown',stores:[],error:error.message.split('\n')[0]};
