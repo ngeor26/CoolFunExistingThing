@@ -5,9 +5,16 @@ const MEMORY = 'main #pay-monthly-tabpanel input[type="radio"][data-upf-product-
 const MODAL = '#bopis-store-locator';
 
 async function dismissOverlays(page) {
-  for (const selector of ['#tnt269975_BtMdL_INS_Cta', '#onetrust-reject-all-handler']) {
-    const button = page.locator(selector);
-    if (await button.isVisible()) await button.click();
+  for (let pass = 0; pass < 3; pass++) {
+    for (const selector of ['#tnt269975_BtMdL_INS_Cta', '#onetrust-reject-all-handler']) {
+      const button = page.locator(selector);
+      // These are dismissal buttons only. A second overlay can cover the cookie
+      // button; do not let that make closing the overlays fail the entire run.
+      if (await button.isVisible()) {
+        try { await button.click({force:true,timeout:1500}); } catch {}
+      }
+    }
+    await page.waitForTimeout(150);
   }
 }
 
