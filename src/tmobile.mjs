@@ -5,12 +5,15 @@ const MEMORY = 'main #pay-monthly-tabpanel input[type="radio"][data-upf-product-
 const MODAL = '#bopis-store-locator';
 
 async function openProduct(page, url) {
+  console.log('Product stage: navigation');
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   for (const selector of ['#tnt269975_BtMdL_INS_Cta', '#onetrust-reject-all-handler']) {
     const button = page.locator(selector);
     if (await button.isVisible()) await button.click();
   }
+  console.log('Product stage: color options');
   await page.locator(COLORS).first().waitFor({ state: 'attached', timeout: 45000 });
+  console.log('Product stage: storage options');
   await page.locator(MEMORY).first().waitFor({ state: 'attached', timeout: 30000 });
   if (!await page.getByRole('heading', {name:'iPhone Duo',exact:true}).isVisible())
     throw new Error('Expected iPhone Duo product page was not displayed.');
@@ -34,6 +37,7 @@ export async function discoverVariants(browser, config) {
     const variants = [];
     for (const color of colors) {
       if (config.colors.length && !config.colors.includes(color)) continue;
+      console.log('Product stage: select color');
       await selectRadio(page, page.locator(COLORS).and(page.locator(`[value="${color}"]`)));
       // Wait for the visible selection and storage options to settle before reading SKU attributes.
       await page.waitForTimeout(1200);
@@ -44,6 +48,7 @@ export async function discoverVariants(browser, config) {
         variants.push({...item, color, name:`${color} ${item.storage}`});
       }
     }
+    console.log(`Product stage: discovered ${variants.length} variants`);
     if (!variants.length || variants.length > config.maxVariants) throw new Error('No matching variants, or unexpected variant count. Review config.json.');
     if (new Set(variants.map(v => v.sku)).size !== variants.length) throw new Error('Variant SKU mapping is ambiguous.');
     return variants;
