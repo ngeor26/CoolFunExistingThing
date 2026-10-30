@@ -36,6 +36,29 @@ async function selectRadio(page, locator) {
   }, id);
 }
 
+async function waitForSearchReady(page) {
+  // Opening the dialog can kick off a delayed initial search that replaces its
+  // contents. Wait for the visible form to settle before entering a location.
+  await page.evaluate(selector => {
+    window.__stockReadyObserver?.disconnect();
+    window.__stockReadySince = performance.now();
+    const root = document.querySelector(selector);
+    window.__stockReadyObserver = new MutationObserver(() => {
+      window.__stockReadySince = performance.now();
+    });
+    window.__stockReadyObserver.observe(root, {childList:true,subtree:true,attributes:true,characterData:true});
+  }, MODAL);
+  await page.waitForFunction(selector => {
+    const root = document.querySelector(selector);
+    const field = root?.querySelector('#field-bopis-store-locator-address');
+    const visible = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+    return visible(root) && visible(field) && !field.disabled &&
+      ![...root.querySelectorAll('.skeleton-loader')].some(visible) &&
+      performance.now() - window.__stockReadySince >= 2000;
+  }, MODAL, {timeout:30000});
+  await page.evaluate(() => window.__stockReadyObserver?.disconnect());
+}
+
 export async function discoverVariants(browser, config) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -75,9 +98,12 @@ export async function checkPickup(browser, config, variant, zip) {
   let stage = 'open-product-and-select-variant';
   try {
     await openProduct(page, config.productUrl);
+    stage = 'select-color';
     await selectRadio(page, page.locator(COLORS).and(page.locator(`[value="${variant.color}"]`)));
     await page.waitForTimeout(1200);
+    stage = 'select-storage';
     await selectRadio(page, page.locator(MEMORY).and(page.locator(`[value="${variant.storage}"]`)));
+    stage = 'verify-variant';
     await page.waitForFunction(({colors,memory,variant}) => {
       const c = [...document.querySelectorAll(colors)].find(e=>e.closest('label')?.classList.contains('selected'));
       const m = [...document.querySelectorAll(memory)].find(e=>e.checked);
@@ -93,10 +119,14 @@ export async function checkPickup(browser, config, variant, zip) {
     await trigger.click();
     const modal = page.locator(MODAL);
     await modal.waitFor({state:'visible'});
-    await page.waitForFunction(selector => ![...document.querySelectorAll(`${selector} .skeleton-loader`)].some(e => e.getClientRects().length), MODAL, {timeout:30000});
     const input = modal.locator('#field-bopis-store-locator-address');
+    let locationVerified = false;
+    for (let searchAttempt = 1; searchAttempt <= 3; searchAttempt++) {
+    stage = 'wait-stable-search-form';
+    await waitForSearchReady(page);
     stage = 'fill-and-submit-location';
     await input.fill(zip);
+    if (await input.inputValue() !== zip) throw new Error('ZIP search was not retained.');
     // Observe the loading transition before submission. Never read initial location results.
     await page.evaluate(selector => {
       const root = document.querySelector(selector);
@@ -114,8 +144,18 @@ export async function checkPickup(browser, config, variant, zip) {
     console.log('Pickup stage: await fresh search results');
     stage = 'wait-search-completion';
     await page.waitForFunction(() => window.__stockSearch?.finished, null, {timeout:30000});
+    // The first loading cycle may belong to late dialog initialization. Let all
+    // pending rendering finish, then require the submitted location to survive.
+    stage = 'wait-stable-search-result';
+    await waitForSearchReady(page);
     stage = 'verify-location';
-    if (await input.inputValue() !== zip) throw new Error('ZIP search was not retained.');
+    if (await input.inputValue() === zip) {
+      locationVerified = true;
+      break;
+    }
+    console.log(`Pickup recovery: search form reset after submission; attempt ${searchAttempt} of 3`);
+    }
+    if (!locationVerified) throw new Error('ZIP search was not retained.');
     stage = 'read-store-rows';
     const snapshot = await modal.evaluate(root => {
       const visible = e => e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
