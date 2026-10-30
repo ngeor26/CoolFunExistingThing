@@ -1,10 +1,10 @@
-# iPhone Duo daily pickup alerts
+# iPhone Duo pickup alerts
 
 A cloud-run Node.js app using GitHub Actions and Pushover. Your computer and browser can be closed. This is not a browser extension and does not need an always-on paid server.
 
 ## Current status
 
-Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThing). The daily schedule and three encrypted repository secrets are configured. Pushover accepted the setup notification, and live cloud searches have returned verified pickup results. View the latest [workflow runs and reports](https://github.com/ngeor26/CoolFunExistingThing/actions/workflows/daily-stock.yml) for current status. T-Mobile can respond slowly or fail to load; the checker retries an unknown result once when time permits, then reports any remaining uncertainty explicitly. Nine tests cover classification, report privacy, notifications, retries and time limits.
+Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThing). The 15-minute schedule and three encrypted repository secrets are configured. Pushover accepted the setup notification, and live cloud searches have returned verified pickup results. View the latest [workflow runs and reports](https://github.com/ngeor26/CoolFunExistingThing/actions/workflows/daily-stock.yml) for current status. T-Mobile can respond slowly or fail to load; the checker retries an unknown result once when time permits, then reports any remaining uncertainty explicitly. Nine tests cover classification, report privacy, notifications, retries and time limits.
 
 ## What it checks
 
@@ -16,7 +16,7 @@ Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThi
 - The search must show a fresh loading/completion cycle after submitting the ZIP. If this cannot be verified, the result is unknown.
 - The pickup form must remain stable for two seconds before entry and after search completion. If the page clears the ZIP, the checker re-enters it and submits a fresh search, up to three submissions per browser attempt. Results are accepted only while the ZIP still matches.
 - Overlapping cookie and promotional banners are dismissed before variant selection. Diagnostic logs record fixed failure stages/categories and boolean page state, never raw page text or location values.
-- One combined stock alert per daily run; stock remaining available on another day produces another daily alert. There is no persistent deduplication database.
+- One combined stock alert per run; stock remaining available can produce another alert every 15 minutes. There is no persistent deduplication database.
 - A separate attention alert for incomplete checks. Errors also fail the Actions run. Setup failures/timeouts before the checker executes rely on GitHub's workflow-failure notifications.
 - One retry for a timed-out or otherwise unknown check, provided at least 90 seconds remain in the checker's time budget.
 
@@ -37,14 +37,14 @@ Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThi
 
    Public logs, summaries and reports identify searches only as `Location 1` and `Location 2`. Store names, addresses, ZIP codes and raw browser errors are excluded from saved reports. Full location details are sent only in your Pushover alerts (and to T-Mobile for the searches). GitHub stores the secret and makes it available to the runner; this hides locations from public repository visitors, not from those services or people with permission to modify your workflow. Do not enable browser debug logging, traces or screenshots in public runs.
 
-5. Open **Actions → Daily iPhone Duo pickup check → Run workflow**. Select the notification test checkbox and run it. Confirm the test arrives on your phone.
+5. Open **Actions → iPhone Duo pickup check → Run workflow**. Select the notification test checkbox and run it. Confirm the test arrives on your phone.
 6. Run the workflow again without the checkbox. Inspect its summary and downloadable `stock-report`. A successful run with real store results verifies the integration; `unknown` means it still needs investigation. Do not treat this setup as working until this live run succeeds.
 
-## Daily schedule and cost
+## Schedule and cost
 
-The workflow requests a run at **16:17 UTC daily** (9:17 a.m. PDT / 8:17 a.m. PST). GitHub schedules may be delayed and are not exact-time guarantees. You can change the cron entry in `.github/workflows/daily-stock.yml`. Disable the workflow from its Actions menu to stop checks.
+The workflow requests a run **every 15 minutes**, at minutes **02, 17, 32 and 47** of every hour, around the clock. GitHub schedules may be delayed and are not exact-time guarantees. You can change the cron entry in `.github/workflows/daily-stock.yml`. Disable the workflow from its Actions menu to stop checks.
 
-Standard GitHub-hosted Actions runners are free for public repositories. A private repository uses your account's included allowance, shared with other workflows. Each run has a 15-minute cap: at most 465 scheduled runner minutes in a 31-day month, plus manual runs. Reports are small and retained for seven days. Keep paid overage disabled in GitHub billing to enforce a $0 spending limit. This project provisions no paid hosting or SMS services.
+Standard GitHub-hosted Actions runners are free for public repositories. A private repository uses your account's included allowance, shared with other workflows. Each run has a 15-minute timeout. The schedule requests up to 96 runs per day; standard public-repository runner minutes do not consume a monthly free-minute allowance. Reports are small and retained for seven days. Keep paid overage disabled in GitHub billing to enforce a $0 spending limit. This project provisions no paid hosting or SMS services.
 
 GitHub can disable public repository schedules after 60 days without repository activity. Re-enable the workflow if this happens. Keep GitHub workflow-failure notifications enabled so infrastructure failures are visible.
 
