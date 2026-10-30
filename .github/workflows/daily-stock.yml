@@ -1,0 +1,57 @@
+name: Daily iPhone Duo pickup check
+on:
+  schedule:
+    - cron: '17 16 * * *'
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: Send only a Pushover setup test
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+concurrency:
+  group: iphone-duo-monitor
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
+      PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+      ZIP_CODES: ${{ secrets.ZIP_CODES }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify notification setup
+        run: node -e "if (!process.env.PUSHOVER_USER_KEY || !process.env.PUSHOVER_APP_TOKEN) throw Error('Add both Pushover secrets in repository Settings > Secrets and variables > Actions')"
+      - name: Test notification
+        if: ${{ inputs.test_notification == true }}
+        run: node src/test-push.mjs
+      - name: Install dependency
+        if: ${{ inputs.test_notification != true }}
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Validate private locations
+        if: ${{ inputs.test_notification != true }}
+        run: node --input-type=module -e "import { readZipCodes } from './src/privacy.mjs'; readZipCodes(process.env.ZIP_CODES)"
+      - name: Test stock classification
+        if: ${{ inputs.test_notification != true }}
+        run: npm test
+      - name: Install Chromium
+        if: ${{ inputs.test_notification != true }}
+        run: npx playwright install --with-deps chromium
+      - name: Check both ZIP codes
+        if: ${{ inputs.test_notification != true }}
+        run: npm run check
+      - name: Save report for seven days
+        if: ${{ always() && inputs.test_notification != true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-report
+          path: reports/
+          retention-days: 7
+          if-no-files-found: ignore
