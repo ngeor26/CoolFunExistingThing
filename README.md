@@ -4,7 +4,7 @@ A cloud-run Node.js app using GitHub Actions and Pushover. Your computer and bro
 
 ## Current status
 
-The checker and daily workflow are implemented. Activation requires the three repository secrets below and a successful live run. Unit tests cover stock classification, public report privacy and Pushover response handling. Live end-to-end pickup verification is still required: T-Mobile's product options remained loading in the inspection browser. A blocked or changed website produces `unknown`, never an invented stock result.
+Deployed in [CoolFunExistingThing](https://github.com/ngeor26/CoolFunExistingThing). The daily schedule and three encrypted repository secrets are configured. Pushover accepted the setup notification, and live cloud searches have returned verified pickup results. View the latest [workflow runs and reports](https://github.com/ngeor26/CoolFunExistingThing/actions/workflows/daily-stock.yml) for current status. T-Mobile can respond slowly or fail to load; the checker retries an unknown result once when time permits, then reports any remaining uncertainty explicitly. Nine tests cover classification, report privacy, notifications, retries and time limits.
 
 ## What it checks
 
@@ -16,6 +16,7 @@ The checker and daily workflow are implemented. Activation requires the three re
 - The search must show a fresh loading/completion cycle after submitting the ZIP. If this cannot be verified, the result is unknown.
 - One combined stock alert per daily run; stock remaining available on another day produces another daily alert. There is no persistent deduplication database.
 - A separate attention alert for incomplete checks. Errors also fail the Actions run. Setup failures/timeouts before the checker executes rely on GitHub's workflow-failure notifications.
+- One retry for a timed-out or otherwise unknown check, provided at least 90 seconds remain in the checker's time budget.
 
 ## Activate in GitHub
 
