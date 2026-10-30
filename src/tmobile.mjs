@@ -72,6 +72,7 @@ export async function checkPickup(browser, config, variant, zip) {
   const context = await browser.newContext(); // No location or stale store results carried between ZIPs.
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
+  let stage = 'open-product-and-select-variant';
   try {
     await openProduct(page, config.productUrl);
     await selectRadio(page, page.locator(COLORS).and(page.locator(`[value="${variant.color}"]`)));
@@ -83,6 +84,7 @@ export async function checkPickup(browser, config, variant, zip) {
       return c?.value === variant.color && m?.value === variant.storage;
     }, {colors:COLORS,memory:MEMORY,variant}, {timeout:20000});
     console.log('Pickup stage: open store search');
+    stage = 'open-store-search';
     const trigger = page.locator('[data-publish-event-topic="INITIATE_BOPIS_STORE_LOCATOR_MODAL"]:visible').first();
     if (!await trigger.isVisible()) {
       const pickup = page.locator('label[data-radiofieldid="BOPIS"]:visible');
@@ -93,6 +95,7 @@ export async function checkPickup(browser, config, variant, zip) {
     await modal.waitFor({state:'visible'});
     await page.waitForFunction(selector => ![...document.querySelectorAll(`${selector} .skeleton-loader`)].some(e => e.getClientRects().length), MODAL, {timeout:30000});
     const input = modal.locator('#field-bopis-store-locator-address');
+    stage = 'fill-and-submit-location';
     await input.fill(zip);
     // Observe the loading transition before submission. Never read initial location results.
     await page.evaluate(selector => {
@@ -109,8 +112,11 @@ export async function checkPickup(browser, config, variant, zip) {
     }, MODAL);
     await input.press('Enter');
     console.log('Pickup stage: await fresh search results');
+    stage = 'wait-search-completion';
     await page.waitForFunction(() => window.__stockSearch?.finished, null, {timeout:30000});
+    stage = 'verify-location';
     if (await input.inputValue() !== zip) throw new Error('ZIP search was not retained.');
+    stage = 'read-store-rows';
     const snapshot = await modal.evaluate(root => {
       const visible = e => e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
       const rows = [...root.querySelectorAll('.tdds-styled-radio')].filter(visible).map(row => ({
@@ -123,6 +129,38 @@ export async function checkPickup(browser, config, variant, zip) {
     console.log('Pickup stage: classify fresh results');
     return {zip,variant:variant.name,sku:variant.sku,...classify(snapshot)};
   } catch (error) {
+    // Log only fixed categories and boolean state, never raw errors or page text.
+    const message = String(error?.message || '');
+    const category = message.includes('ZIP search was not retained.') ? 'location-field-changed'
+      : /Timeout|timeout/.test(message) ? 'timeout'
+      : /strict mode violation/.test(message) ? 'ambiguous-selector'
+      : /intercepts pointer events/.test(message) ? 'overlay'
+      : /Cannot read properties of undefined/.test(message) ? 'undefined-property'
+      : /Cannot read properties of null/.test(message) ? 'null-property'
+      : /Target.*closed|context.*closed/i.test(message) ? 'browser-closed'
+      : /Execution context was destroyed/.test(message) ? 'navigation-during-read'
+      : 'other-exception';
+    let state = {probeFailed:true};
+    try {
+      state = await page.evaluate(({selector,expectedZip}) => {
+        const root = document.querySelector(selector);
+        const field = root?.querySelector('#field-bopis-store-locator-address');
+        const value = field?.value || '';
+        return {
+          dialogPresent:!!root, inputPresent:!!field,
+          inputEmpty:value.length === 0,
+          inputExactMatch:value === expectedZip,
+          inputTrimmedMatch:value.trim() === expectedZip,
+          inputContainsExpectedZip:value.includes(expectedZip),
+          inputIsFiveDigits:/^\d{5}$/.test(value),
+          loadingStarted:window.__stockSearch?.started === true,
+          loadingFinished:window.__stockSearch?.finished === true,
+          visibleLoader:!!root && [...root.querySelectorAll('.skeleton-loader')].some(e=>e.getClientRects().length>0),
+          storeRowsPresent:!!root?.querySelector('.tdds-styled-radio')
+        };
+      }, {selector:MODAL,expectedZip:zip});
+    } catch {}
+    console.log('Pickup diagnostic:', JSON.stringify({stage,category,...state}));
     return {zip,variant:variant.name,sku:variant.sku,status:'unknown',stores:[],error:error.message.split('\n')[0]};
   } finally { await context.close(); }
 }
