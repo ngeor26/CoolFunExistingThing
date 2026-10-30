@@ -1,6 +1,6 @@
 {
   "productUrl": "https://www.t-mobile.com/cell-phone/apple-iphone-duo",
-  "colors": [],
-  "storage": [],
+  "colors": ["Star White", "Night Sky"],
+  "storage": ["256GB", "512GB"],
   "maxVariants": 12
 }
