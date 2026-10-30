@@ -4,6 +4,7 @@ import { discoverVariants, checkPickup } from './tmobile.mjs';
 import { notification } from './stock.mjs';
 import { push } from './pushover.mjs';
 import { readZipCodes, publicResults } from './privacy.mjs';
+import { checkWithRetry } from './retry.mjs';
 
 const config = JSON.parse(await readFile(new URL('../config.json', import.meta.url)));
 config.zipCodes = readZipCodes(process.env.ZIP_CODES);
@@ -23,7 +24,7 @@ try {
     for (const zip of config.zipCodes) {
       const result = Date.now() > deadline
         ? {zip,variant:variant.name,sku:variant.sku,status:'unknown',stores:[],error:'Run time limit reached before this check.'}
-        : await checkPickup(browser,config,variant,zip);
+        : await checkWithRetry(() => checkPickup(browser,config,variant,zip), deadline);
       results.push(result);
       console.log(`Location ${config.zipCodes.indexOf(zip) + 1} | ${variant.name} | ${result.status}`);
     }
